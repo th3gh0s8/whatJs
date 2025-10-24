@@ -1,23 +1,113 @@
 const socket = io();
 
-const form = document.getElementById('message-form');
+const createSessionButton = document.getElementById('create-session-button');
+const sessionsContainer = document.getElementById('sessions-container');
+const messageForm = document.getElementById('message-form');
+const sessionIdSendInput = document.getElementById('session-id-send');
 const numberInput = document.getElementById('number');
 const messageInput = document.getElementById('message');
-const qrcodeDiv = document.getElementById('qrcode');
+const sessionSelect = document.getElementById('session-select');
 
-const statusDiv = document.getElementById('status');
+// Function to create and append session UI
+function createSessionUI(session_id) {
+    const sessionDiv = document.createElement('div');
+    sessionDiv.id = `session-${session_id}`;
+    sessionDiv.classList.add('session-card');
+    sessionDiv.style.display = 'none'; // Initially hide new sessions
+    sessionDiv.innerHTML = `
+        <h3>Session ID: ${session_id}</h3>
+        <div id="qrcode-${session_id}" class="qrcode-display"></div>
+        <div id="status-${session_id}" class="status-display">Waiting for QR...</div>
+        <button class="disconnect-button" data-session-id="${session_id}">Disconnect</button>
+        <hr>
+    `;
+    sessionsContainer.appendChild(sessionDiv);
 
-socket.on('status', (status) => {
-    statusDiv.innerHTML = status;
+    // Add event listener for the disconnect button
+    sessionDiv.querySelector('.disconnect-button').addEventListener('click', (e) => {
+        const sid = e.target.dataset.sessionId;
+        socket.emit('disconnectClient', sid);
+    });
+
+    // Add session to dropdown
+    const option = document.createElement('option');
+    option.value = session_id;
+    option.textContent = session_id;
+    sessionSelect.appendChild(option);
+}
+
+createSessionButton.addEventListener('click', () => {
+    const session_id = `session-${Date.now()}`;
+    createSessionUI(session_id);
+    socket.emit('createSession', session_id);
 });
 
-socket.on('qr', (qr) => {
-    qrcodeDiv.innerHTML = `<img src="${qr}">`;
+socket.on('qr', (data) => {
+    const { session_id, url } = data;
+    const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
+    if (qrcodeDiv) {
+        qrcodeDiv.innerHTML = `<img src="${url}">`;
+    }
+    // If this is the first session or only session, select it
+    if (sessionSelect.options.length === 2) { // 1 for default option, 1 for new session
+        sessionSelect.value = session_id;
+        sessionSelect.dispatchEvent(new Event('change'));
+    }
 });
 
-form.addEventListener('submit', (e) => {
+socket.on('status', (data) => {
+    const { session_id, message } = data;
+    const statusDiv = document.getElementById(`status-${session_id}`);
+    if (statusDiv) {
+        statusDiv.innerHTML = message;
+    }
+});
+
+socket.on('clearQr', (session_id) => {
+    // Remove session from UI and dropdown
+    const sessionDiv = document.getElementById(`session-${session_id}`);
+    if (sessionDiv) {
+        sessionDiv.remove();
+    }
+    const option = sessionSelect.querySelector(`option[value="${session_id}"]`);
+    if (option) {
+        option.remove();
+    }
+    // Reset dropdown and message form if the disconnected session was selected
+    if (sessionSelect.value === session_id) {
+        sessionSelect.value = '';
+        sessionIdSendInput.value = '';
+    }
+});
+
+sessionSelect.addEventListener('change', (e) => {
+    const selectedSessionId = e.target.value;
+    sessionIdSendInput.value = selectedSessionId;
+
+    // Hide all session UIs
+    document.querySelectorAll('.session-card').forEach(div => {
+        div.style.display = 'none';
+    });
+
+    // Show the selected session's UI
+    if (selectedSessionId) {
+        const selectedSessionDiv = document.getElementById(`session-${selectedSessionId}`);
+        if (selectedSessionDiv) {
+            selectedSessionDiv.style.display = 'block';
+        }
+    }
+});
+
+messageForm.addEventListener('submit', (e) => {
     e.preventDefault();
+    const session_id = sessionIdSendInput.value;
     const number = numberInput.value;
     const message = messageInput.value;
-    socket.emit('sendMessage', { number, message });
+
+    if (!session_id) {
+        alert('Please select a session to send messages from.');
+        return;
+    }
+
+    socket.emit('sendMessage', { session_id, number, message });
 });
