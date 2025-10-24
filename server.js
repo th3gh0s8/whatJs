@@ -4,7 +4,7 @@ const http = require('http');
 const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server);
-const { Client, LocalAuth } = require('whatsapp-web.js');
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
 
 const qrcode = require('qrcode');
 
@@ -94,6 +94,35 @@ io.on('connection', (socket) => {
             clientData.messageQueue.push({ number: formattedNumber, message });
             io.emit('status', { session_id, message: 'Client not ready, message queued.' });
             console.log(`Client for session ${session_id} not ready, message queued.`);
+        }
+    });
+
+    socket.on('sendAttachment', async (data) => {
+        const { session_id, number, base64Data, filename, mimetype } = data;
+        const clientData = clients.get(session_id);
+
+        if (!clientData) {
+            io.emit('status', { session_id, message: 'Client not found for this session.' });
+            return;
+        }
+
+        const { client, ready } = clientData;
+        const formattedNumber = `${number}@c.us`;
+
+        console.log(`Attempting to send attachment from session ${session_id} to ${formattedNumber}: ${filename}`);
+
+        if (ready) {
+            try {
+                const media = new MessageMedia(mimetype, base64Data, filename);
+                await client.sendMessage(formattedNumber, media);
+                io.emit('status', { session_id, message: `Attachment ${filename} sent to ${number}` });
+            } catch (error) {
+                console.error('Error sending attachment:', error);
+                io.emit('status', { session_id, message: `Error sending attachment to ${number}: ${error.message}` });
+            }
+        } else {
+            io.emit('status', { session_id, message: 'Client not ready, attachment not sent.' });
+            console.log(`Client for session ${session_id} not ready, attachment not sent.`);
         }
     });
 

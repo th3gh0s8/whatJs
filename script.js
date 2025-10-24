@@ -6,6 +6,8 @@ const messageForm = document.getElementById('message-form');
 const sessionIdSendInput = document.getElementById('session-id-send');
 const numberInput = document.getElementById('number');
 const messageInput = document.getElementById('message');
+const attachmentInput = document.getElementById('attachment');
+const sendAttachmentButton = document.getElementById('send-attachment-button');
 const sessionSelect = document.getElementById('session-select');
 
 // Function to create and append session UI
@@ -109,5 +111,38 @@ messageForm.addEventListener('submit', (e) => {
         return;
     }
 
-    socket.emit('sendMessage', { session_id, number, message });
+    if (message) { // Only send text message if message input is not empty
+        socket.emit('sendMessage', { session_id, number, message });
+    } else {
+        alert('Please enter a message or select an attachment to send.');
+    }
+});
+
+sendAttachmentButton.addEventListener('click', () => {
+    const session_id = sessionIdSendInput.value;
+    const number = numberInput.value;
+    const attachment = attachmentInput.files[0];
+
+    if (!session_id) {
+        alert('Please select a session to send attachments from.');
+        return;
+    }
+
+    if (!attachment) {
+        alert('Please select an attachment to send.');
+        return;
+    }
+
+    const reader = new FileReader();
+    reader.onloadend = () => {
+        const base64Data = reader.result.split(';base64,')[1];
+        socket.emit('sendAttachment', {
+            session_id,
+            number,
+            base64Data,
+            filename: attachment.name,
+            mimetype: attachment.type,
+        });
+    };
+    reader.readAsDataURL(attachment);
 });
