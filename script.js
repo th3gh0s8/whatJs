@@ -16,7 +16,7 @@ function createSessionUI(session_id) {
     const sessionDiv = document.createElement('div');
     sessionDiv.id = `session-${session_id}`;
     sessionDiv.classList.add('session-card');
-    sessionDiv.style.display = 'block'; // Initially hide new sessions
+    sessionDiv.style.display = 'none'; // Initially hide new sessions
     sessionDiv.innerHTML = `
         <h3>Session ID: ${session_id}</h3>
         <div id="qrcode-${session_id}" class="qrcode-display"></div>
@@ -41,7 +41,6 @@ function createSessionUI(session_id) {
 
 createSessionButton.addEventListener('click', () => {
     const session_id = `session-${Date.now()}`;
-    createSessionUI(session_id);
     socket.emit('createSession', session_id);
 });
 
@@ -53,9 +52,15 @@ socket.on('qr', (data) => {
     const { session_id, url } = data;
     console.log(`QR event received on client for session ${session_id}, URL length: ${url.length}`);
 
+    // Ensure the session UI exists before trying to update it
+    if (!document.getElementById(`session-${session_id}`)) {
+        createSessionUI(session_id);
+    }
+
     const sessionDiv = document.getElementById(`session-${session_id}`);
     if (sessionDiv) {
-        sessionDiv.style.display = 'block'; // Make sure the session UI is visible
+        // The visibility of the sessionDiv is now primarily controlled by the sessionSelect.addEventListener('change', ...)
+        // This block only ensures the QR code image is updated.
     }
 
     const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
@@ -67,14 +72,17 @@ socket.on('qr', (data) => {
     }
 
     // If this is the first session or only session, select it
-    if (sessionSelect.options.length === 2) { // 1 for default option, 1 for new session
-        sessionSelect.value = session_id;
-        sessionSelect.dispatchEvent(new Event('change'));
-    }
+    // Removed automatic selection logic. User should explicitly select.
 });
 
 socket.on('status', (data) => {
     const { session_id, message } = data;
+
+    // Ensure the session UI exists before trying to update it
+    if (!document.getElementById(`session-${session_id}`)) {
+        createSessionUI(session_id);
+    }
+
     const statusDiv = document.getElementById(`status-${session_id}`);
     if (statusDiv) {
         statusDiv.innerHTML = message;
@@ -95,6 +103,10 @@ socket.on('clearQr', (session_id) => {
     if (sessionSelect.value === session_id) {
         sessionSelect.value = '';
         sessionIdSendInput.value = '';
+        // Hide all session UIs when the selected session is disconnected
+        document.querySelectorAll('.session-card').forEach(div => {
+            div.style.display = 'none';
+        });
     }
 });
 
@@ -104,14 +116,12 @@ socket.on('existingSessions', (sessionIds) => {
         createSessionUI(session_id);
     });
 
-    // Automatically select the first session if available
-    if (sessionIds.length > 0) {
+    // Automatically select the first session if available and no session is currently selected
+    if (sessionIds.length > 0 && !sessionSelect.value) {
         sessionSelect.value = sessionIds[0];
         sessionIdSendInput.value = sessionIds[0];
-        const selectedSessionDiv = document.getElementById(`session-${sessionIds[0]}`);
-        if (selectedSessionDiv) {
-            selectedSessionDiv.style.display = 'block';
-        }
+        // Trigger the change event to ensure the UI is updated correctly
+        sessionSelect.dispatchEvent(new Event('change'));
     }
 });
 

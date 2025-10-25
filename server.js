@@ -49,11 +49,13 @@ function processInitializationQueue() {
     if (initializationQueue.length > 0 && !isProcessingQueue) {
         isProcessingQueue = true;
         const session_id = initializationQueue.shift();
+        console.log(`[Server] Processing initialization queue for session: ${session_id}`);
         initializeWhatsAppClient(session_id).then(() => {
+            console.log(`[Server] Finished initializing client for session: ${session_id}`);
             isProcessingQueue = false;
             processInitializationQueue(); // Process next in queue
         }).catch(error => {
-            console.error(`Error initializing client for session ${session_id}:`, error);
+            console.error(`[Server] Error initializing client for session ${session_id}:`, error);
             isProcessingQueue = false;
             processInitializationQueue(); // Process next in queue even if one fails
         });
@@ -85,9 +87,11 @@ function initializeWhatsAppClient(session_id) {
                     }
                     console.log(`[Server] Emitting QR code for session ${session_id}, URL length: ${url.length}`);
                     io.emit('qr', { session_id, url });
+                    resolve(); // Resolve the promise here to allow the queue to continue
                 });
             });
         client.on('auth_failure', (msg) => {
+            console.log(`[Server] Auth Failure for session ${session_id}: ${msg}`);
             io.emit('status', { session_id, message: `Authentication failed: ${msg}` });
             // Mark session as inactive on auth failure
             if (allSessions[session_id]) {
@@ -97,12 +101,18 @@ function initializeWhatsAppClient(session_id) {
             reject(new Error(`Authentication failed for session ${session_id}: ${msg}`));
         });
 
+        client.on('authenticated', () => {
+            console.log(`[Server] Client authenticated for session ${session_id}`);
+            io.emit('status', { session_id, message: 'Client authenticated!' });
+        });
+
         client.on('loading_screen', (percent, message) => {
+            console.log(`[Server] Loading screen for session ${session_id}: ${percent}% - ${message}`);
             io.emit('status', { session_id, message: `Loading: ${percent}% - ${message}` });
         });
 
         client.on('disconnected', (reason) => {
-            io.emit('status', { session_id, message: `Client disconnected: ${reason}` });
+            console.log(`[Server] Client disconnected for session ${session_id}: ${reason}`);
             io.emit('clearQr', session_id);
             if (clients.has(session_id)) {
                 clients.get(session_id).ready = false;
@@ -135,6 +145,7 @@ function initializeWhatsAppClient(session_id) {
         });
 
         client.initialize().then(() => {
+            console.log(`[Server] client.initialize() started for session ${session_id}`);
             // Initialization successful, but client might not be ready yet
         }).catch(err => {
             console.error(`Error during client.initialize() for session ${session_id}:`, err);
