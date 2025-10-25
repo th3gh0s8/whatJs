@@ -1,6 +1,7 @@
 const socket = io();
 
 const createSessionButton = document.getElementById('create-session-button');
+const cleanupSessionsButton = document.getElementById('cleanup-sessions-button');
 const sessionsContainer = document.getElementById('sessions-container');
 const messageForm = document.getElementById('message-form');
 const sessionIdSendInput = document.getElementById('session-id-send');
@@ -15,7 +16,7 @@ function createSessionUI(session_id) {
     const sessionDiv = document.createElement('div');
     sessionDiv.id = `session-${session_id}`;
     sessionDiv.classList.add('session-card');
-    sessionDiv.style.display = 'none'; // Initially hide new sessions
+    sessionDiv.style.display = 'block'; // Initially hide new sessions
     sessionDiv.innerHTML = `
         <h3>Session ID: ${session_id}</h3>
         <div id="qrcode-${session_id}" class="qrcode-display"></div>
@@ -44,12 +45,27 @@ createSessionButton.addEventListener('click', () => {
     socket.emit('createSession', session_id);
 });
 
+cleanupSessionsButton.addEventListener('click', () => {
+    socket.emit('cleanupInactiveSessions');
+});
+
 socket.on('qr', (data) => {
     const { session_id, url } = data;
+    console.log(`QR event received on client for session ${session_id}, URL length: ${url.length}`);
+
+    const sessionDiv = document.getElementById(`session-${session_id}`);
+    if (sessionDiv) {
+        sessionDiv.style.display = 'block'; // Make sure the session UI is visible
+    }
+
     const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
     if (qrcodeDiv) {
+        console.log(`Found qrcodeDiv for session ${session_id}`);
         qrcodeDiv.innerHTML = `<img src="${url}">`;
+    } else {
+        console.log(`qrcodeDiv not found for session ${session_id}`);
     }
+
     // If this is the first session or only session, select it
     if (sessionSelect.options.length === 2) { // 1 for default option, 1 for new session
         sessionSelect.value = session_id;
@@ -82,6 +98,27 @@ socket.on('clearQr', (session_id) => {
     }
 });
 
+socket.on('existingSessions', (sessionIds) => {
+    console.log(`Received existingSessions on client: ${sessionIds}`);
+    sessionIds.forEach(session_id => {
+        createSessionUI(session_id);
+    });
+
+    // Automatically select the first session if available
+    if (sessionIds.length > 0) {
+        sessionSelect.value = sessionIds[0];
+        sessionIdSendInput.value = sessionIds[0];
+        const selectedSessionDiv = document.getElementById(`session-${sessionIds[0]}`);
+        if (selectedSessionDiv) {
+            selectedSessionDiv.style.display = 'block';
+        }
+    }
+});
+
+socket.on('connect', () => {
+    socket.emit('requestAllSessionStatuses');
+});
+
 sessionSelect.addEventListener('change', (e) => {
     const selectedSessionId = e.target.value;
     sessionIdSendInput.value = selectedSessionId;
@@ -105,44 +142,50 @@ messageForm.addEventListener('submit', (e) => {
     const session_id = sessionIdSendInput.value;
     const number = numberInput.value;
     const message = messageInput.value;
+    const attachment = attachmentInput.files[0];
 
     if (!session_id) {
         alert('Please select a session to send messages from.');
         return;
     }
 
-    if (message) { // Only send text message if message input is not empty
-        socket.emit('sendMessage', { session_id, number, message });
-    } else {
+    if (!message && !attachment) {
         alert('Please enter a message or select an attachment to send.');
-    }
-});
-
-sendAttachmentButton.addEventListener('click', () => {
-    const session_id = sessionIdSendInput.value;
-    const number = numberInput.value;
-    const attachment = attachmentInput.files[0];
-
-    if (!session_id) {
-        alert('Please select a session to send attachments from.');
         return;
     }
 
-    if (!attachment) {
-        alert('Please select an attachment to send.');
-        return;
+    if (message && attachment) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64Data = reader.result.split(';base64,')[1];
+            socket.emit('sendCombinedMessage', {
+                session_id,
+                number,
+                message,
+                base64Data,
+                filename: attachment.name,
+                mimetype: attachment.type,
+            });
+        };
+        reader.readAsDataURL(attachment);
+    } else if (message) {
+        socket.emit('sendMessage', { session_id, number, message });
+    } else if (attachment) {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+            const base64Data = reader.result.split(';base64,')[1];
+            socket.emit('sendAttachment', {
+                session_id,
+                number,
+                base64Data,
+                filename: attachment.name,
+                mimetype: attachment.type,
+            });
+        };
+        reader.readAsDataURL(attachment);
     }
 
-    const reader = new FileReader();
-    reader.onloadend = () => {
-        const base64Data = reader.result.split(';base64,')[1];
-        socket.emit('sendAttachment', {
-            session_id,
-            number,
-            base64Data,
-            filename: attachment.name,
-            mimetype: attachment.type,
-        });
-    };
-    reader.readAsDataURL(attachment);
+    // Clear inputs after sending
+    messageInput.value = '';
+    attachmentInput.value = '';
 });

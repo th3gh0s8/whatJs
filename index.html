@@ -9,6 +9,7 @@
 <body>
     <h1>WhatsApp Multi-Session Sender</h1>
     <button id="create-session-button">Connect New Account</button>
+    <button id="cleanup-sessions-button">Clean Up Inactive Sessions</button>
 
     <div class="session-selector">
         <label for="session-select">Select Session:</label>
@@ -25,8 +26,7 @@
         <input type="text" id="number" placeholder="Enter phone number" required>
         <input type="text" id="message" placeholder="Enter your message">
         <input type="file" id="attachment" accept="image/*,video/*,application/pdf">
-        <button type="submit">Send Message</button>
-        <button type="button" id="send-attachment-button">Send Attachment</button>
+        <button type="submit">Send</button>
     </form>
 
     <script src="/socket.io/socket.io.js"></script>
