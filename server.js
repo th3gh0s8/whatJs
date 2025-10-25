@@ -5,7 +5,7 @@ const server = http.createServer(app);
 const { Server } = require("socket.io");
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:3000", // Allow connections from your client-side origin
+        origin: "http://localhost:8000",
         methods: ["GET", "POST"]
     },
     transports: ['websocket', 'polling'] // Explicitly define transports
