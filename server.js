@@ -1,28 +1,57 @@
 const express = require('express');
 const app = express();
-const http = require('http');
+
+const https = require('https');
+
 const { Server } = require("socket.io");
-const whatsappClient = require('./whatsapp-client'); // Import the whatsappClient module
+const fs = require('fs');
+const options = {
+  key: fs.readFileSync('pw-cert/powersoftt.key'),   // adjust path
+  cert: fs.readFileSync('pw-cert/powersoftt.crt'),
+  ca: fs.readFileSync('pw-cert/powersoftt-ca-bundle.crt') // optional but recommended
+};
 
-const server = http.createServer(app);
-const PORT = process.env.PORT || 3000;
-
-// Enable CORS for all origins in development and specific origins in production
-app.use((req, res, next) => {
-    res.header("Access-Control-Allow-Origin", "*");
-    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    res.header("Access-Control-Allow-Credentials", "true");
-    next();
-});
+const server = https.createServer(options, app);
 
 const io = new Server(server, {
     cors: {
-        origin: ["https://powersoftt.com", "https://www.powersoftt.com", "http://localhost:3000", "http://localhost:3001", "*"],
-        methods: ["GET", "POST"],
-        credentials: true
+        origin: "https://powersoftt.com",
+        methods: ["GET", "POST"]
     },
-    transports: ['websocket', 'polling'],
-    allowEIO3: true // Allow Engine.IO v3 (older version) for better compatibility
+    transports: ['websocket', 'polling'] // Explicitly define transports
+});
+const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
+
+
+const SESSION_FILE = 'sessions.json';
+
+// Function to read sessions from file
+function readSessionsFromFile() {
+    if (fs.existsSync(SESSION_FILE)) {
+        const data = fs.readFileSync(SESSION_FILE, 'utf8');
+        return JSON.parse(data);
+    }
+    return {};
+}
+
+// Function to write sessions to file
+function writeSessionsToFile(sessions) {
+    fs.writeFileSync(SESSION_FILE, JSON.stringify(sessions, null, 2), 'utf8');
+}
+
+const qrcode = require('qrcode');
+
+const clients = new Map(); // Stores WhatsApp clients by session_id
+let allSessions = readSessionsFromFile(); // Load all session data from file
+
+// Re-initialize clients map from allSessions for active sessions
+Object.keys(allSessions).forEach(session_id => {
+    if (allSessions[session_id].status === 'active' || allSessions[session_id].status === 'pending') {
+        // We don't re-initialize the client here, just prepare the map for active clients
+        // The actual client initialization will happen via processInitializationQueue
+        clients.set(session_id, { client: null, ready: false, messageQueue: [] });
+    }
+
 });
 
 // Trust proxy settings for nginx

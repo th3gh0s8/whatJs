@@ -34,6 +34,8 @@
     </div>
 
     <script src="https://powersoftt.com:3000/socket.io/socket.io.js"></script>
-    <script src="script.js"></script>
+
+    <script src="script.js?1"></script>
+
 </body>
 </html>

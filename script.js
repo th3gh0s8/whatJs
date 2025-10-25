@@ -1,4 +1,6 @@
-const socket = io('/');
+
+const socket = io('https://powersoftt.com:3000');
+
 
 const createSessionButton = document.getElementById('create-session-button');
 const cleanupSessionsButton = document.getElementById('cleanup-sessions-button');
