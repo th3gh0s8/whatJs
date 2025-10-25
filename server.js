@@ -1,31 +1,53 @@
 const express = require('express');
 const app = express();
-const http = require('http'); // Only http is needed
+const http = require('http');
 const { Server } = require("socket.io");
 const whatsappClient = require('./whatsapp-client'); // Import the whatsappClient module
 
-const server = http.createServer(app); // Create an HTTP server directly
+const server = http.createServer(app);
 const PORT = process.env.PORT || 3000;
+
+// Enable CORS for all origins in development and specific origins in production
+app.use((req, res, next) => {
+    res.header("Access-Control-Allow-Origin", "*");
+    res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    res.header("Access-Control-Allow-Credentials", "true");
+    next();
+});
 
 const io = new Server(server, {
     cors: {
-        origin: "https://powersoftt.com", // Keep this for production domain
-        methods: ["GET", "POST"]
+        origin: ["https://powersoftt.com", "https://www.powersoftt.com", "http://localhost:3000", "http://localhost:3001", "*"],
+        methods: ["GET", "POST"],
+        credentials: true
     },
-    transports: ['websocket', 'polling']
+    transports: ['websocket', 'polling'],
+    allowEIO3: true // Allow Engine.IO v3 (older version) for better compatibility
 });
+
+// Trust proxy settings for nginx
+app.set('trust proxy', true);
 
 whatsappClient.initialize(io); // Initialize whatsappClient with io
 
 app.use(express.static(__dirname));
 
 io.on('connection', (socket) => {
-
+    console.log(`New client connected with socket ID: ${socket.id}`);
+    
+    // Handle nginx proxy headers
+    const clientIP = socket.handshake.headers['x-forwarded-for'] || socket.handshake.address;
+    console.log(`Client connected from IP: ${clientIP}`);
+    
     const existing = whatsappClient.getExistingSessionIds();
 
     console.log(`Client connected. Emitting existingSessions: ${existing}`);
 
     socket.emit('existingSessions', existing);
+    
+    socket.on('disconnect', (reason) => {
+        console.log(`Client disconnected (socket ID: ${socket.id}) - Reason: ${reason}`);
+    });
 
     socket.on('createSession', (session_id) => {
         whatsappClient.createSession(session_id, io);
