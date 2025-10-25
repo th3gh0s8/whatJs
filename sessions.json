@@ -2,10 +2,10 @@
   "session-1761372534197": {
     "status": "active"
   },
-  "session-1761381467199": {
-    "status": "inactive"
-  },
   "session-1761381511095": {
+    "status": "pending"
+  },
+  "session-1761383134455": {
     "status": "pending"
   }
 }

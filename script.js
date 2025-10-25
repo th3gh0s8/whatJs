@@ -86,6 +86,14 @@ socket.on('status', (data) => {
     const statusDiv = document.getElementById(`status-${session_id}`);
     if (statusDiv) {
         statusDiv.innerHTML = message;
+        statusDiv.className = 'status-display'; // Reset classes
+        if (message.includes('ready')) {
+            statusDiv.classList.add('active');
+        } else if (message.includes('QR code received') || message.includes('Loading')) {
+            statusDiv.classList.add('pending');
+        } else if (message.includes('Authentication failed') || message.includes('disconnected') || message.includes('inactive')) {
+            statusDiv.classList.add('inactive');
+        }
     }
 });
 
