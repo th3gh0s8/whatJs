@@ -1,32 +1,15 @@
 const express = require('express');
 const app = express();
-const http = require('http');
-const https = require('https');
-const fs = require('fs');
+const http = require('http'); // Only http is needed
 const { Server } = require("socket.io");
 const whatsappClient = require('./whatsapp-client'); // Import the whatsappClient module
 
-let server;
+const server = http.createServer(app); // Create an HTTP server directly
 const PORT = process.env.PORT || 3000;
-
-// Check for SSL certificates
-const privateKeyPath = './certs/key.pem';
-const certificatePath = './certs/cert.pem';
-
-if (fs.existsSync(privateKeyPath) && fs.existsSync(certificatePath)) {
-    const privateKey = fs.readFileSync(privateKeyPath, 'utf8');
-    const certificate = fs.readFileSync(certificatePath, 'utf8');
-    const credentials = { key: privateKey, cert: certificate };
-    server = https.createServer(credentials, app);
-    console.log('HTTPS server created.');
-} else {
-    server = http.createServer(app);
-    console.log('HTTP server created. For HTTPS, place key.pem and cert.pem in the ./certs directory.');
-}
 
 const io = new Server(server, {
     cors: {
-        origin: "https://powersoftt.com", // Updated for production domain
+        origin: "https://powersoftt.com", // Keep this for production domain
         methods: ["GET", "POST"]
     },
     transports: ['websocket', 'polling']
