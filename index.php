@@ -26,7 +26,7 @@
 
         <h2>Send Message</h2>
         <form id="message-form">
-            <input type="text" id="session-id-send" placeholder="Enter Session ID" required readonly>
+            <input type="text" id="session-id-send" placeholder="Enter Session ID" required readonly style="display: none;">
             <input type="text" id="number" placeholder="Enter phone number" required>
             <input type="text" id="message" placeholder="Enter your message">
             <input type="file" id="attachment" accept="image/*,video/*,application/pdf">
