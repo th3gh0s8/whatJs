@@ -143,4 +143,7 @@ vite.config.ts.timestamp-*
 .wwebjs_auth/ 
 
 # WhatsApp Web.js cache data
-.wwebjs_cache/ 
+.wwebjs_cache/
+
+pw-cert/
+

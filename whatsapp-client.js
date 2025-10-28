@@ -44,16 +44,42 @@ function processInitializationQueue(io) {
 function initializeWhatsAppClient(session_id, io) {
     return new Promise((resolve, reject) => {
         console.log(`Initializing WhatsApp client for session: ${session_id}`);
+        
+        // Set up a timeout to handle stuck initializations
+        const initTimeout = setTimeout(() => {
+            console.log(`[Server] Initialization timeout for session ${session_id}`);
+            // Clean up any partial initialization
+            if (clients.has(session_id)) {
+                const clientData = clients.get(session_id);
+                if (clientData.client) {
+                    clientData.client.destroy().catch(err => console.error('Error destroying client:', err));
+                }
+                clients.delete(session_id);
+            }
+            // Mark as inactive to allow retry
+            if (allSessions[session_id]) {
+                allSessions[session_id].status = 'inactive';
+                writeSessionsToFile(allSessions);
+            }
+            reject(new Error(`Initialization timeout for session ${session_id}`));
+        }, 45000); // 45 second timeout for initialization
+
         const client = new Client({
             authStrategy: new LocalAuth({ clientId: session_id }),
             puppeteer: {
                 args: ['--no-sandbox'],
+                headless: true,  // Ensure headless mode to avoid issues on servers
             }
         });
 
         clients.set(session_id, { client, ready: false, messageQueue: [] });
         allSessions[session_id] = { status: 'pending' };
         writeSessionsToFile(allSessions);
+
+        // Clear timeout when initialization completes successfully
+        const clearInitTimeout = () => {
+            clearTimeout(initTimeout);
+        };
 
         client.on('qr', (qr) => {
             console.log(`[Server] QR event received for session ${session_id}`);
@@ -62,10 +88,12 @@ function initializeWhatsAppClient(session_id, io) {
                 if (err) {
                     console.error(`[Server] Error generating QR code for session ${session_id}:`, err);
                     io.emit('status', { session_id, message: `Error generating QR: ${err.message}` });
+                    clearInitTimeout();
                     return;
                 }
                 console.log(`[Server] Emitting QR code for session ${session_id}, URL length: ${url.length}`);
                 io.emit('qr', { session_id, url });
+                clearInitTimeout();
                 resolve(); // Resolve the promise here to allow the queue to continue
             });
         });
@@ -78,6 +106,7 @@ function initializeWhatsAppClient(session_id, io) {
                 allSessions[session_id].status = 'inactive';
                 writeSessionsToFile(allSessions);
             }
+            clearInitTimeout();
             reject(new Error(`Authentication failed for session ${session_id}: ${msg}`));
         });
 
@@ -95,7 +124,10 @@ function initializeWhatsAppClient(session_id, io) {
             console.log(`[Server] Client disconnected for session ${session_id}: ${reason}`);
             io.emit('clearQr', session_id);
             if (clients.has(session_id)) {
-                clients.get(session_id).ready = false;
+                const sessionData = clients.get(session_id);
+                sessionData.ready = false;
+                // Clear message queue when disconnected
+                sessionData.messageQueue = [];
                 clients.delete(session_id);
             }
             // Mark session as inactive on disconnect
@@ -103,6 +135,7 @@ function initializeWhatsAppClient(session_id, io) {
                 allSessions[session_id].status = 'inactive';
                 writeSessionsToFile(allSessions);
             }
+            clearInitTimeout();
             resolve(); // Resolve on disconnect as well
         });
 
@@ -119,8 +152,11 @@ function initializeWhatsAppClient(session_id, io) {
             // Process queued messages for this session
             while (sessionData.messageQueue.length > 0) {
                 const message = sessionData.messageQueue.shift();
-                client.sendMessage(message.number, message.message);
+                client.sendMessage(message.number, message.message).catch(err => {
+                    console.error(`Error sending queued message:`, err);
+                });
             }
+            clearInitTimeout();
             resolve();
         });
 
@@ -136,16 +172,32 @@ function initializeWhatsAppClient(session_id, io) {
                 allSessions[session_id].status = 'inactive';
                 writeSessionsToFile(allSessions);
             }
+            clearInitTimeout();
             reject(err);
         });
     });
 }
 
 function createSession(session_id, io) {
+    // If a client with this session_id already exists, destroy it first
+    if (clients.has(session_id)) {
+        const existingClientData = clients.get(session_id);
+        if (existingClientData.client) {
+            existingClientData.client.destroy().catch(err => 
+                console.error(`Error destroying existing client for session ${session_id}:`, err)
+            );
+        }
+        clients.delete(session_id);
+    }
+    
     if (!allSessions[session_id]) {
         allSessions[session_id] = { status: 'pending' };
         writeSessionsToFile(allSessions);
         io.emit('newSessionCreated', session_id); // Emit event to client
+    } else {
+        // Update status when creating a new session
+        allSessions[session_id].status = 'pending';
+        writeSessionsToFile(allSessions);
     }
     initializationQueue.push(session_id);
     processInitializationQueue(io);
@@ -273,21 +325,68 @@ function cleanupInactiveSessions() {
         }
     }
 
+    // Also clean up any auth directories that don't have corresponding entries in sessions.json
+    if (fs.existsSync(sessionDir)) {
+        const authDirs = fs.readdirSync(sessionDir);
+        for (const dir of authDirs) {
+            if (dir.startsWith('session-')) {
+                const sessionMatch = dir.match(/session-(.*)/);
+                if (sessionMatch) {
+                    const sessionId = sessionMatch[1];
+                    if (!allSessions[sessionId]) {
+                        // This auth directory doesn't have a corresponding session in sessions.json
+                        const orphanedDir = `${sessionDir}/${dir}`;
+                        fs.rmSync(orphanedDir, { recursive: true, force: true });
+                        console.log(`Cleaned up orphaned session directory: ${orphanedDir}`);
+                    }
+                }
+            }
+        }
+    }
+
     if (sessionsModified) {
         writeSessionsToFile(allSessions);
     }
 }
 
 function initialize(io) {
+    console.log('[Server] Initializing WhatsApp clients on startup');
+    
     // Run cleanup on server startup
     cleanupInactiveSessions();
+
+    // Clean up any pending sessions that might be stale from previous runs
+    for (const session_id in allSessions) {
+        if (allSessions[session_id].status === 'pending') {
+            // Check if authentication data exists for this session
+            // If it was in QR scanning state but never completed, it might be stale
+            const authDir = `./.wwebjs_auth/session-${session_id}`;
+            if (!fs.existsSync(authDir)) {
+                // No auth data exists, this session was never started properly
+                // Mark as inactive so it can be retried
+                allSessions[session_id].status = 'inactive';
+                writeSessionsToFile(allSessions);
+            } else {
+                // Auth directory exists but session is still pending - this might be a session 
+                // that was in QR scanning state when the server was stopped
+                console.log(`[Server] Found pending session ${session_id}, will attempt to reconnect`);
+            }
+        } else if (allSessions[session_id].status === 'active') {
+            // For active sessions, reset to pending so we try to reconnect
+            console.log(`[Server] Found active session ${session_id} from previous run, will attempt to reconnect`);
+            allSessions[session_id].status = 'pending';
+        }
+    }
 
     // Initialize existing sessions on server startup
     Object.keys(allSessions).forEach(session_id => {
         if (allSessions[session_id].status === 'active' || allSessions[session_id].status === 'pending') {
+            // Add to initialization queue
             initializationQueue.push(session_id);
         }
     });
+    
+    console.log(`[Server] Queued ${initializationQueue.length} sessions for initialization`);
     processInitializationQueue(io);
 }
 
