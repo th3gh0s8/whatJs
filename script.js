@@ -49,7 +49,7 @@ function createSessionUI(session_id) {
     sessionDiv.innerHTML = `
         <button class="connect-button" data-session-id="${session_id}">Connect</button>
         <div id="qrcode-${session_id}" class="qrcode-display"></div>
-        <div id="status-${session_id}" class="status-display">Waiting for QR...</div>
+        <div id="status-${session_id}" class="status-display">Disconnected</div>
         <button class="disconnect-button" data-session-id="${session_id}">Disconnect</button>
         <hr>
     `;
@@ -88,27 +88,23 @@ function setupSocketListeners() {
         const { session_id, url } = data;
         console.log(`QR event received on client for session ${session_id}`);
 
-        if (!document.getElementById(`session-${session_id}`)) {
-            createSessionUI(session_id);
-        }
-
         const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
         if (qrcodeDiv) {
             qrcodeDiv.innerHTML = `<img src="${url}">`;
         }
 
+        const currentActiveButton = document.querySelector('.tab-button.active');
         const buttonToClick = Array.from(sessionButtons).find(btn => btn.dataset.sessionId === session_id);
-        if (buttonToClick) {
-            buttonToClick.click();
+
+        if (!currentActiveButton || currentActiveButton === buttonToClick) {
+            if (buttonToClick) {
+                buttonToClick.click();
+            }
         }
     });
 
     socket.on('status', (data) => {
         const { session_id, message } = data;
-
-        if (!document.getElementById(`session-${session_id}`)) {
-            createSessionUI(session_id);
-        }
 
         const statusDiv = document.getElementById(`status-${session_id}`);
         if (statusDiv) {
@@ -116,6 +112,7 @@ function setupSocketListeners() {
         }
 
         const connectButton = document.querySelector(`#session-${session_id} .connect-button`);
+
         if (message === 'Client is ready!') {
             if (connectButton) connectButton.style.display = 'none';
             if (!activeSessions.includes(session_id)) {
@@ -131,8 +128,18 @@ function setupSocketListeners() {
     socket.on('clearQr', (session_id) => {
         const sessionDiv = document.getElementById(`session-${session_id}`);
         if (sessionDiv) {
+            const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
+            if (qrcodeDiv) {
+                qrcodeDiv.innerHTML = '';
+            }
+            const statusDiv = document.getElementById(`status-${session_id}`);
+            if (statusDiv) {
+                statusDiv.innerHTML = 'Disconnected';
+            }
             const connectButton = sessionDiv.querySelector('.connect-button');
-            if (connectButton) connectButton.style.display = 'block';
+            if (connectButton) {
+                connectButton.style.display = 'block';
+            }
         }
 
         activeSessions = activeSessions.filter(id => id !== session_id);
@@ -147,9 +154,6 @@ function setupSocketListeners() {
     socket.on('existingSessions', (sessionIds) => {
         console.log(`Received existingSessions on client: ${sessionIds}`);
         activeSessions = sessionIds;
-        activeSessions.forEach(session_id => {
-            createSessionUI(session_id);
-        });
         updateButtonUI();
     });
 
@@ -184,9 +188,6 @@ sessionButtons.forEach(button => {
         const sessionDiv = document.getElementById(`session-${sessionId}`);
         if (sessionDiv) {
             sessionDiv.style.display = 'block';
-        } else {
-            createSessionUI(sessionId);
-            document.getElementById(`session-${sessionId}`).style.display = 'block';
         }
     });
 });
@@ -209,9 +210,11 @@ messageForm.addEventListener('submit', (e) => {
     }
 
     if (message && attachment) {
+        console.log('Preparing to send combined message with attachment:', attachment);
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64Data = reader.result.split(';base64,')[1];
+            console.log('Combined message base64 data length:', base64Data.length);
             socket.emit('sendCombinedMessage', {
                 session_id,
                 number,
@@ -225,9 +228,11 @@ messageForm.addEventListener('submit', (e) => {
     } else if (message) {
         socket.emit('sendMessage', { session_id, number, message });
     } else if (attachment) {
+        console.log('Preparing to send attachment:', attachment);
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64Data = reader.result.split(';base64,')[1];
+            console.log('Attachment base64 data length:', base64Data.length);
             socket.emit('sendAttachment', {
                 session_id,
                 number,
@@ -250,3 +255,6 @@ messageForm.addEventListener('submit', (e) => {
 
 setupSocketListeners();
 
+sessionButtons.forEach(button => {
+    createSessionUI(button.dataset.sessionId);
+});
