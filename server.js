@@ -132,6 +132,21 @@ io.on('connection', (socket) => {
     });
 });
 
+// Graceful shutdown handling
+process.on('SIGTERM', () => {
+    console.log('SIGTERM received, shutting down gracefully');
+    server.close(() => {
+        console.log('Process terminated');
+    });
+});
+
+process.on('SIGINT', () => {
+    console.log('SIGINT received, shutting down gracefully');
+    server.close(() => {
+        console.log('Process terminated');
+    });
+});
+
 server.listen(PORT, () => {
     console.log(`listening on *:${PORT}`);
 });

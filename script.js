@@ -1,5 +1,10 @@
 
-const socket = io('https://powersoftt.com:3000');
+// Connect directly to the Node.js server
+const socket = io('https://powersoftt.com:3000', {
+    path: '/socket.io',
+    transports: ['websocket', 'polling'],
+    withCredentials: true
+});
 
 
 const createSessionButton = document.getElementById('create-session-button');
@@ -155,7 +160,7 @@ sessionSelect.addEventListener('change', (e) => {
 
 messageForm.addEventListener('submit', (e) => {
     e.preventDefault();
-    const session_id = sessionSelect.value; // Get session ID from dropdown instead of hidden textbox
+    const session_id = sessionSelect.value; // Get session ID from dropdown
     const number = numberInput.value;
     const message = messageInput.value;
     const attachment = attachmentInput.files[0];
@@ -164,7 +169,6 @@ messageForm.addEventListener('submit', (e) => {
         alert('Please select a session to send messages from.');
         return;
     }
-
     if (!message && !attachment) {
         alert('Please enter a message or select an attachment to send.');
         return;
