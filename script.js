@@ -210,9 +210,11 @@ messageForm.addEventListener('submit', (e) => {
     }
 
     if (message && attachment) {
+        console.log('Preparing to send combined message with attachment:', attachment);
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64Data = reader.result.split(';base64,')[1];
+            console.log('Combined message base64 data length:', base64Data.length);
             socket.emit('sendCombinedMessage', {
                 session_id,
                 number,
@@ -226,9 +228,11 @@ messageForm.addEventListener('submit', (e) => {
     } else if (message) {
         socket.emit('sendMessage', { session_id, number, message });
     } else if (attachment) {
+        console.log('Preparing to send attachment:', attachment);
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64Data = reader.result.split(';base64,')[1];
+            console.log('Attachment base64 data length:', base64Data.length);
             socket.emit('sendAttachment', {
                 session_id,
                 number,
@@ -254,4 +258,3 @@ setupSocketListeners();
 sessionButtons.forEach(button => {
     createSessionUI(button.dataset.sessionId);
 });
-
