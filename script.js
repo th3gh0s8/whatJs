@@ -1,7 +1,6 @@
 const socket = io('http://localhost:3000');
 
 // UI Elements
-const createSessionButton = document.getElementById('create-session-button');
 const cleanupSessionsButton = document.getElementById('cleanup-sessions-button');
 const sessionsContainer = document.getElementById('sessions-container');
 const messageForm = document.getElementById('message-form');
@@ -14,6 +13,7 @@ const sessionButtons = document.querySelectorAll('.tab-button');
 
 // State
 let activeSessions = [];
+let pendingSessions = [];
 
 // -------------------
 // -- Notifications --
@@ -47,12 +47,19 @@ function createSessionUI(session_id) {
     sessionDiv.classList.add('session-card');
     sessionDiv.style.display = 'none'; // Initially hide new sessions
     sessionDiv.innerHTML = `
+        <button class="connect-button" data-session-id="${session_id}">Connect</button>
         <div id="qrcode-${session_id}" class="qrcode-display"></div>
         <div id="status-${session_id}" class="status-display">Waiting for QR...</div>
         <button class="disconnect-button" data-session-id="${session_id}">Disconnect</button>
         <hr>
     `;
     sessionsContainer.appendChild(sessionDiv);
+
+    // Add event listener for the connect button
+    sessionDiv.querySelector('.connect-button').addEventListener('click', (e) => {
+        const sid = e.target.dataset.sessionId;
+        socket.emit('createSession', sid);
+    });
 
     // Add event listener for the disconnect button
     sessionDiv.querySelector('.disconnect-button').addEventListener('click', (e) => {
@@ -108,19 +115,28 @@ function setupSocketListeners() {
             statusDiv.innerHTML = message;
         }
 
-        if (message === 'Client is ready!' && !activeSessions.includes(session_id)) {
-            activeSessions.push(session_id);
-            updateButtonUI();
+        const connectButton = document.querySelector(`#session-${session_id} .connect-button`);
+        if (message === 'Client is ready!') {
+            if (connectButton) connectButton.style.display = 'none';
+            if (!activeSessions.includes(session_id)) {
+                activeSessions.push(session_id);
+                pendingSessions = pendingSessions.filter(id => id !== session_id);
+                updateButtonUI();
+            }
+        } else {
+            if (connectButton) connectButton.style.display = 'block';
         }
     });
 
     socket.on('clearQr', (session_id) => {
         const sessionDiv = document.getElementById(`session-${session_id}`);
         if (sessionDiv) {
-            sessionDiv.remove();
+            const connectButton = sessionDiv.querySelector('.connect-button');
+            if (connectButton) connectButton.style.display = 'block';
         }
 
         activeSessions = activeSessions.filter(id => id !== session_id);
+        pendingSessions = pendingSessions.filter(id => id !== session_id);
         updateButtonUI();
 
         if (sessionIdSendInput.value === session_id) {
@@ -146,17 +162,6 @@ function setupSocketListeners() {
 // -- Event Listeners --
 // -------------------
 
-createSessionButton.addEventListener('click', () => {
-    const allSessionIds = Array.from(sessionButtons).map(btn => btn.dataset.sessionId);
-    const nextSessionId = allSessionIds.find(id => !activeSessions.includes(id));
-
-    if (nextSessionId) {
-        socket.emit('createSession', nextSessionId);
-    } else {
-        showNotification('All sessions are currently active.', true);
-    }
-});
-
 cleanupSessionsButton.addEventListener('click', () => {
     socket.emit('cleanupInactiveSessions');
 });
@@ -180,8 +185,8 @@ sessionButtons.forEach(button => {
         if (sessionDiv) {
             sessionDiv.style.display = 'block';
         } else {
-            // If the session UI doesn't exist, maybe create it or wait for status
-            // For now, we just ensure the input is set.
+            createSessionUI(sessionId);
+            document.getElementById(`session-${sessionId}`).style.display = 'block';
         }
     });
 });

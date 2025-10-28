@@ -10,7 +10,6 @@
     <div id="notifications"></div>
     <div class="container">
         <h1>WhatsApp Multi-Session Sender</h1>
-        <button id="create-session-button">Connect New Account</button>
         <button id="cleanup-sessions-button">Clean Up Inactive Sessions</button>
 
         <div id="session-tabs">
