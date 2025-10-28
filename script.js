@@ -93,9 +93,13 @@ function setupSocketListeners() {
             qrcodeDiv.innerHTML = `<img src="${url}">`;
         }
 
+        const currentActiveButton = document.querySelector('.tab-button.active');
         const buttonToClick = Array.from(sessionButtons).find(btn => btn.dataset.sessionId === session_id);
-        if (buttonToClick) {
-            buttonToClick.click();
+
+        if (!currentActiveButton || currentActiveButton === buttonToClick) {
+            if (buttonToClick) {
+                buttonToClick.click();
+            }
         }
     });
 
