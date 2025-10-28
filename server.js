@@ -19,7 +19,9 @@ const SESSION_FILE = 'sessions.json';
 function readSessionsFromFile() {
     if (fs.existsSync(SESSION_FILE)) {
         const data = fs.readFileSync(SESSION_FILE, 'utf8');
-        return JSON.parse(data);
+        if (data) {
+            return JSON.parse(data);
+        }
     }
     return {};
 }
