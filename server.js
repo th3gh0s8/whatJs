@@ -1,17 +1,25 @@
 const express = require('express');
 const app = express();
-const http = require('http');
-const server = http.createServer(app);
+const https = require('https');
+
 const { Server } = require("socket.io");
+const fs = require('fs');
+const options = {
+  key: fs.readFileSync('pw-cert/powersoftt.key'),
+  cert: fs.readFileSync('pw-cert/powersoftt.crt'),
+  ca: fs.readFileSync('pw-cert/powersoftt-ca-bundle.crt') 
+};
+
+const server = https.createServer(options, app);
+
 const io = new Server(server, {
     cors: {
-        origin: "http://localhost:8000",
+        origin: "https://powersoftt.com",
         methods: ["GET", "POST"]
     },
-    transports: ['websocket', 'polling'] // Explicitly define transports
+    transports: ['websocket', 'polling'] 
 });
 const { Client, LocalAuth, MessageMedia } = require('whatsapp-web.js');
-const fs = require('fs');
 
 const SESSION_FILE = 'sessions.json';
 
@@ -19,9 +27,7 @@ const SESSION_FILE = 'sessions.json';
 function readSessionsFromFile() {
     if (fs.existsSync(SESSION_FILE)) {
         const data = fs.readFileSync(SESSION_FILE, 'utf8');
-        if (data) {
-            return JSON.parse(data);
-        }
+        return JSON.parse(data);
     }
     return {};
 }

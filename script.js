@@ -1,6 +1,6 @@
-const socket = io('http://localhost:3000');
+const socket = io('https://powersoftt.com:3000');
 
-// UI Elements
+const createSessionButton = document.getElementById('create-session-button');
 const cleanupSessionsButton = document.getElementById('cleanup-sessions-button');
 const sessionsContainer = document.getElementById('sessions-container');
 const messageForm = document.getElementById('message-form');
@@ -8,189 +8,167 @@ const sessionIdSendInput = document.getElementById('session-id-send');
 const numberInput = document.getElementById('number');
 const messageInput = document.getElementById('message');
 const attachmentInput = document.getElementById('attachment');
-const notifications = document.getElementById('notifications');
-const sessionButtons = document.querySelectorAll('.tab-button');
+const sendAttachmentButton = document.getElementById('send-attachment-button');
+const sessionSelect = document.getElementById('session-select');
 
-// State
-let activeSessions = [];
-let pendingSessions = [];
-
-// -------------------
-// -- Notifications --
-// -------------------
-
-function showNotification(message, isError = false) {
-    const notification = document.createElement('div');
-    notification.className = `notification ${isError ? 'error' : ''}`;
-    notification.textContent = message;
-    notifications.appendChild(notification);
-
-    setTimeout(() => {
-        notification.classList.add('show');
-    }, 10);
-
-    setTimeout(() => {
-        notification.classList.remove('show');
-        setTimeout(() => {
-            notifications.removeChild(notification);
-        }, 300);
-    }, 3000);
-}
-
-// -------------------
-// -- Session UI    --
-// -------------------
-
+// Function to create and append session UI
 function createSessionUI(session_id) {
     const sessionDiv = document.createElement('div');
     sessionDiv.id = `session-${session_id}`;
     sessionDiv.classList.add('session-card');
     sessionDiv.style.display = 'none'; // Initially hide new sessions
     sessionDiv.innerHTML = `
-        <button class="connect-button" data-session-id="${session_id}">Connect</button>
+        <h3>Session ID: ${session_id}</h3>
         <div id="qrcode-${session_id}" class="qrcode-display"></div>
-        <div id="status-${session_id}" class="status-display">Disconnected</div>
+        <div id="status-${session_id}" class="status-display">Waiting for QR...</div>
         <button class="disconnect-button" data-session-id="${session_id}">Disconnect</button>
         <hr>
     `;
     sessionsContainer.appendChild(sessionDiv);
-
-    // Add event listener for the connect button
-    sessionDiv.querySelector('.connect-button').addEventListener('click', (e) => {
-        const sid = e.target.dataset.sessionId;
-        socket.emit('createSession', sid);
-    });
 
     // Add event listener for the disconnect button
     sessionDiv.querySelector('.disconnect-button').addEventListener('click', (e) => {
         const sid = e.target.dataset.sessionId;
         socket.emit('disconnectClient', sid);
     });
+
+    // Add session to dropdown
+    const option = document.createElement('option');
+    option.value = session_id;
+    option.textContent = session_id;
+    sessionSelect.appendChild(option);
 }
 
-function updateButtonUI() {
-    sessionButtons.forEach(button => {
-        const sessionId = button.dataset.sessionId;
-        if (activeSessions.includes(sessionId)) {
-            button.classList.add('active');
-        } else {
-            button.classList.remove('active');
-        }
-    });
-}
-
-// -------------------
-// -- Socket Events --
-// -------------------
-
-function setupSocketListeners() {
-    socket.on('qr', (data) => {
-        const { session_id, url } = data;
-        console.log(`QR event received on client for session ${session_id}`);
-
-        const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
-        if (qrcodeDiv) {
-            qrcodeDiv.innerHTML = `<img src="${url}">`;
-        }
-
-        const currentActiveButton = document.querySelector('.tab-button.active');
-        const buttonToClick = Array.from(sessionButtons).find(btn => btn.dataset.sessionId === session_id);
-
-        if (!currentActiveButton || currentActiveButton === buttonToClick) {
-            if (buttonToClick) {
-                buttonToClick.click();
-            }
-        }
-    });
-
-    socket.on('status', (data) => {
-        const { session_id, message } = data;
-
-        const statusDiv = document.getElementById(`status-${session_id}`);
-        if (statusDiv) {
-            statusDiv.innerHTML = message;
-        }
-
-        const connectButton = document.querySelector(`#session-${session_id} .connect-button`);
-
-        if (message === 'Client is ready!') {
-            if (connectButton) connectButton.style.display = 'none';
-            if (!activeSessions.includes(session_id)) {
-                activeSessions.push(session_id);
-                pendingSessions = pendingSessions.filter(id => id !== session_id);
-                updateButtonUI();
-            }
-        } else {
-            if (connectButton) connectButton.style.display = 'block';
-        }
-    });
-
-    socket.on('clearQr', (session_id) => {
-        const sessionDiv = document.getElementById(`session-${session_id}`);
-        if (sessionDiv) {
-            const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
-            if (qrcodeDiv) {
-                qrcodeDiv.innerHTML = '';
-            }
-            const statusDiv = document.getElementById(`status-${session_id}`);
-            if (statusDiv) {
-                statusDiv.innerHTML = 'Disconnected';
-            }
-            const connectButton = sessionDiv.querySelector('.connect-button');
-            if (connectButton) {
-                connectButton.style.display = 'block';
-            }
-        }
-
-        activeSessions = activeSessions.filter(id => id !== session_id);
-        pendingSessions = pendingSessions.filter(id => id !== session_id);
-        updateButtonUI();
-
-        if (sessionIdSendInput.value === session_id) {
-            sessionIdSendInput.value = '';
-        }
-    });
-
-    socket.on('existingSessions', (sessionIds) => {
-        console.log(`Received existingSessions on client: ${sessionIds}`);
-        activeSessions = sessionIds;
-        updateButtonUI();
-    });
-
-    socket.on('connect', () => {
-        socket.emit('requestAllSessionStatuses');
-    });
-}
-
-// -------------------
-// -- Event Listeners --
-// -------------------
+createSessionButton.addEventListener('click', () => {
+    const session_id = `session-${Date.now()}`;
+    socket.emit('createSession', session_id);
+});
 
 cleanupSessionsButton.addEventListener('click', () => {
     socket.emit('cleanupInactiveSessions');
 });
 
-sessionButtons.forEach(button => {
-    button.addEventListener('click', () => {
-        const sessionId = button.dataset.sessionId;
-        sessionIdSendInput.value = sessionId;
+socket.on('qr', (data) => {
+    const { session_id, url } = data;
+    console.log(`QR event received on client for session ${session_id}, URL length: ${url.length}`);
 
-        // Update active class
-        sessionButtons.forEach(btn => btn.classList.remove('active'));
-        button.classList.add('active');
+    // Ensure the session UI exists before trying to update it
+    if (!document.getElementById(`session-${session_id}`)) {
+        createSessionUI(session_id);
+    }
 
-        // Hide all session cards
+    const sessionDiv = document.getElementById(`session-${session_id}`);
+    if (sessionDiv) {
+        // The visibility of the sessionDiv is now primarily controlled by the sessionSelect.addEventListener('change', ...)
+        // This block only ensures the QR code image is updated.
+    }
+
+    const qrcodeDiv = document.getElementById(`qrcode-${session_id}`);
+    if (qrcodeDiv) {
+        console.log(`Found qrcodeDiv for session ${session_id}`);
+        qrcodeDiv.innerHTML = `<img src="${url}">`;
+    } else {
+        console.log(`qrcodeDiv not found for session ${session_id}`);
+    }
+
+    // If this is the first session or only session, select it
+    // Removed automatic selection logic. User should explicitly select.
+});
+
+socket.on('status', (data) => {
+    const { session_id, message } = data;
+
+    // Ensure the session UI exists before trying to update it
+    if (!document.getElementById(`session-${session_id}`)) {
+        createSessionUI(session_id);
+    }
+
+    const statusDiv = document.getElementById(`status-${session_id}`);
+    if (statusDiv) {
+        statusDiv.innerHTML = message;
+        statusDiv.className = 'status-display'; // Reset classes
+        if (message.includes('ready')) {
+            statusDiv.classList.add('active');
+        } else if (message.includes('QR code received') || message.includes('Loading')) {
+            statusDiv.classList.add('pending');
+        } else if (message.includes('Authentication failed') || message.includes('disconnected') || message.includes('inactive')) {
+            statusDiv.classList.add('inactive');
+        }
+    }
+});
+
+socket.on('clearQr', (session_id) => {
+    // Remove session from UI and dropdown
+    const sessionDiv = document.getElementById(`session-${session_id}`);
+    if (sessionDiv) {
+        sessionDiv.remove();
+    }
+    const option = sessionSelect.querySelector(`option[value="${session_id}"]`);
+    if (option) {
+        option.remove();
+    }
+    // Reset dropdown and message form if the disconnected session was selected
+    if (sessionSelect.value === session_id) {
+        sessionSelect.value = '';
+        sessionIdSendInput.value = '';
+        // Hide all session UIs when the selected session is disconnected
         document.querySelectorAll('.session-card').forEach(div => {
             div.style.display = 'none';
         });
-
-        // Show the selected session card
-        const sessionDiv = document.getElementById(`session-${sessionId}`);
-        if (sessionDiv) {
-            sessionDiv.style.display = 'block';
-        }
-    });
+    }
 });
+
+socket.on('existingSessions', (sessionIds) => {
+    console.log(`Received existingSessions on client: ${sessionIds}`);
+    sessionIds.forEach(session_id => {
+        createSessionUI(session_id);
+    });
+
+    // Automatically select the first session if available and no session is currently selected
+    if (sessionIds.length > 0 && !sessionSelect.value) {
+        sessionSelect.value = sessionIds[0];
+        sessionIdSendInput.value = sessionIds[0];
+        // Trigger the change event to ensure the UI is updated correctly
+        sessionSelect.dispatchEvent(new Event('change'));
+    }
+});
+
+socket.on('connect', () => {
+    //socket.emit('requestAllSessionStatuses');
+});
+
+sessionSelect.addEventListener('change', (e) => {
+    const selectedSessionId = e.target.value;
+    sessionIdSendInput.value = selectedSessionId;
+
+    // Hide all session UIs
+    document.querySelectorAll('.session-card').forEach(div => {
+        div.style.display = 'none';
+    });
+
+    if (selectedSessionId) {
+        // Create UI if not exists
+        if (!document.getElementById(`session-${selectedSessionId}`)) {
+            createSessionUI(selectedSessionId);
+        }
+
+        // Show the selected session's UI
+        const selectedSessionDiv = document.getElementById(`session-${selectedSessionId}`);
+        selectedSessionDiv.style.display = 'block';
+
+        // Set status text while loading
+        const statusDiv = document.getElementById(`status-${selectedSessionId}`);
+        if (statusDiv) {
+            statusDiv.innerHTML = 'Checking session status...';
+        }
+
+        // Request the server to send current status for this session only
+        socket.emit('requestSessionStatus', selectedSessionId);
+    } else {
+        sessionIdSendInput.value = '';
+    }
+});
+
 
 messageForm.addEventListener('submit', (e) => {
     e.preventDefault();
@@ -200,21 +178,19 @@ messageForm.addEventListener('submit', (e) => {
     const attachment = attachmentInput.files[0];
 
     if (!session_id) {
-        showNotification('Please select a session to send messages from.', true);
+        alert('Please select a session to send messages from.');
         return;
     }
 
     if (!message && !attachment) {
-        showNotification('Please enter a message or select an attachment to send.', true);
+        alert('Please enter a message or select an attachment to send.');
         return;
     }
 
     if (message && attachment) {
-        console.log('Preparing to send combined message with attachment:', attachment);
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64Data = reader.result.split(';base64,')[1];
-            console.log('Combined message base64 data length:', base64Data.length);
             socket.emit('sendCombinedMessage', {
                 session_id,
                 number,
@@ -228,11 +204,9 @@ messageForm.addEventListener('submit', (e) => {
     } else if (message) {
         socket.emit('sendMessage', { session_id, number, message });
     } else if (attachment) {
-        console.log('Preparing to send attachment:', attachment);
         const reader = new FileReader();
         reader.onloadend = () => {
             const base64Data = reader.result.split(';base64,')[1];
-            console.log('Attachment base64 data length:', base64Data.length);
             socket.emit('sendAttachment', {
                 session_id,
                 number,
@@ -247,14 +221,4 @@ messageForm.addEventListener('submit', (e) => {
     // Clear inputs after sending
     messageInput.value = '';
     attachmentInput.value = '';
-});
-
-// -------------------
-// -- Initialization --
-// -------------------
-
-setupSocketListeners();
-
-sessionButtons.forEach(button => {
-    createSessionUI(button.dataset.sessionId);
 });
